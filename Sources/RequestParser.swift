@@ -57,17 +57,17 @@ var requestSettings: http_parser_settings = {
     return settings
 }()
 
-public final class RequestParser: S4.RequestParser {
+public final class RequestParser {
     let context: RequestContext
     var parser = http_parser()
-    var request: Request?
+    var onRequest: ((Request) -> Void)?
 
-    public init() {
+    public init(onRequest: ((Request) -> Void)? = nil) {
+        self.onRequest = onRequest
         context = RequestContext(allocatingCapacity: 1)
         context.initialize(with: RequestParserContext { request in
-            self.request = request
-            })
-
+            self.onRequest?(request)
+        })
         resetParser()
     }
 
@@ -80,9 +80,7 @@ public final class RequestParser: S4.RequestParser {
         parser.data = UnsafeMutablePointer<Void>(context)
     }
 
-    public func parse(_ data: Data) throws -> Request? {
-        defer { request = nil }
-
+    public func parse(_ data: Data) throws {
         let bytesParsed = http_parser_execute(&parser, &requestSettings, UnsafePointer(data.bytes), data.count)
         guard bytesParsed == data.count else {
             resetParser()
@@ -91,18 +89,12 @@ public final class RequestParser: S4.RequestParser {
             let error = ParseError(description: "\(String(validatingUTF8: errorName)!): \(String(validatingUTF8: errorDescription)!)")
             throw error
         }
-
-        if request != nil {
-            resetParser()
-        }
-
-        return request
     }
 }
 
 extension RequestParser {
-    public func parse(_ convertible: DataConvertible) throws -> Request? {
-        return try parse(convertible.data)
+    public func parse(_ convertible: DataConvertible) throws {
+        try parse(convertible.data)
     }
 }
 
